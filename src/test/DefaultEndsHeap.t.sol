@@ -170,4 +170,24 @@ contract DefaultEndsHeapTest is DSTest, RandomUtils {
         setSeed(bytes32(uint256(1)));
         runTest(generateConstantInput(100));
     }
+
+    function test200Random() public {
+        setSeed(bytes32(uint256(1)));
+        runTest(generateRandomInput(200));
+    }
+
+    function test200Sorted() public {
+        setSeed(bytes32(uint256(1)));
+        runTest(generateSortedInput(200));
+    }
+
+    function test200RevSorted() public {
+        setSeed(bytes32(uint256(1)));
+        runTest(generateRevSortedInput(200));
+    }
+
+    function test200ConstantInput() public {
+        setSeed(bytes32(uint256(1)));
+        runTest(generateConstantInput(200));
+    }
 }
