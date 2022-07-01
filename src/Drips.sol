@@ -668,7 +668,7 @@ library DefaultEndsHeap {
         uint128 amtPerSec
     ) internal pure {
         unchecked {
-            defaults[length] = (uint256(start) << 128) | amtPerSec;
+            _arrayStore(defaults, length, uint256(start) << 128 | amtPerSec);
         }
     }
 
@@ -681,7 +681,7 @@ library DefaultEndsHeap {
             // All the childless elements of the heap are already valid one element heaps.
             // Remove and insert each element which has children to gradually build a valid heap.
             for (uint256 i = length / 2; i-- > 0; ) {
-                _siftDown(defaults, length, i, defaults[i]);
+                _siftDown(defaults, length, i, _arrayLoad(defaults, i));
             }
         }
     }
@@ -691,7 +691,7 @@ library DefaultEndsHeap {
     /// @return start The lowest start time.
     function peekStart(uint256[] memory defaults) internal pure returns (uint32 start) {
         unchecked {
-            return uint32(defaults[0] >> 128);
+            return uint32(_arrayLoad(defaults, 0) >> 128);
         }
     }
 
@@ -707,14 +707,14 @@ library DefaultEndsHeap {
         returns (uint256 newLength, uint136 amtPerSec)
     {
         unchecked {
-            uint256 defaultEnd = defaults[0];
+            uint256 defaultEnd = _arrayLoad(defaults, 0);
             amtPerSec = uint128(defaultEnd);
             // The highest value with start time equal to the popped value
             uint256 defaultEndNoAmtPerSec = defaultEnd | type(uint128).max;
             while (--length > 0) {
                 // Remove the lowest element and fill its place with the last element of the heap
-                _siftDown(defaults, length, 0, defaults[length]);
-                defaultEnd = defaults[0];
+                _siftDown(defaults, length, 0, _arrayLoad(defaults, length));
+                defaultEnd = _arrayLoad(defaults, 0);
                 if (defaultEnd > defaultEndNoAmtPerSec) break;
                 amtPerSec += uint128(defaultEnd);
             }
@@ -741,11 +741,11 @@ library DefaultEndsHeap {
                 uint256 child = empty * 2 + 1;
                 // Empty has no children
                 if (child >= length) break;
-                uint256 childVal = defaults[child];
+                uint256 childVal = _arrayLoad(defaults, child);
                 uint256 otherChild = child + 1;
                 // Empty has 2 children
                 if (otherChild < length) {
-                    uint256 otherChildVal = defaults[otherChild];
+                    uint256 otherChildVal = _arrayLoad(defaults, otherChild);
                     // Pick the smaller child
                     if (otherChildVal < childVal) {
                         child = otherChild;
@@ -756,10 +756,28 @@ library DefaultEndsHeap {
                 if (childVal >= insertedNoAmtPerSec) break;
                 // Move the smaller child one level up
                 // and keep looking for the right space for the inserted value
-                defaults[empty] = childVal;
+                _arrayStore(defaults, empty, childVal);
                 empty = child;
             }
-            defaults[empty] = inserted;
+            _arrayStore(defaults, empty, inserted);
+        }
+    }
+
+    function _arrayLoad(uint256[] memory array, uint256 idx) private pure returns (uint256 val) {
+        /// @solidity memory-safe-assembly
+        assembly {
+            val := mload(add(32, add(array, shl(5, idx))))
+        }
+    }
+
+    function _arrayStore(
+        uint256[] memory array,
+        uint256 idx,
+        uint256 val
+    ) private pure {
+        /// @solidity memory-safe-assembly
+        assembly {
+            mstore(add(32, add(array, shl(5, idx))), val)
         }
     }
 }
