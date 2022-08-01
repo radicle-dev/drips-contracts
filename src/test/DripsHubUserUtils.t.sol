@@ -220,6 +220,19 @@ abstract contract DripsHubUserUtils is DSTest {
         assertTotalCollectableAll(erc20, receiver, expectedCollectable);
     }
 
+    function assertGiveReverts(
+        AddressAppUser user,
+        AddressAppUser receiver,
+        uint128 amt,
+        string memory expectedReason
+    ) internal {
+        try user.give(receiver.userId(), defaultErc20, amt) {
+            assertTrue(false, "Give hasn't reverted");
+        } catch Error(string memory reason) {
+            assertEq(reason, expectedReason, "Invalid give revert reason");
+        }
+    }
+
     function splitsReceivers() internal pure returns (SplitsReceiver[] memory list) {
         list = new SplitsReceiver[](0);
     }
@@ -465,6 +478,10 @@ abstract contract DripsHubUserUtils is DSTest {
 
     function assertCollectable(AddressAppUser user, uint256 expected) internal {
         assertEq(collectable(user), expected, "Invalid collectable");
+    }
+
+    function assertTotalBalance(uint256 expected) internal {
+        assertEq(dripsHub.totalBalance(defaultErc20), expected, "Invalid total balance");
     }
 
     function assertBalance(AddressAppUser user, uint256 expected) internal {

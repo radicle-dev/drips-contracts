@@ -11,6 +11,10 @@ struct SplitsReceiver {
     uint32 weight;
 }
 
+/// @notice Splits can keep track of at most `type(uint128).max`
+/// which is `2 ^ 128 - 1` units of each asset.
+/// It's up to the caller to guarantee that this limit is never exceeded,
+/// failing to do so may result in a total protocol collapse.
 abstract contract Splits {
     /// @notice Maximum number of splits receivers of a single user.
     /// Limits cost of collecting.
