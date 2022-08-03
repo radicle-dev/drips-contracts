@@ -350,22 +350,27 @@ abstract contract Drips {
         uint256[] memory defaultEnds,
         uint256 idx,
         uint192 amtPerSec,
-        uint32 start
+        uint32 start,
+        uint32 end
     ) private pure {
-        defaultEnds[idx] = (uint256(amtPerSec) << 32) | start;
+        defaultEnds[idx] = (uint256(amtPerSec) << 64) | (uint256(start) << 32) | end;
     }
 
     function _getDefaultEnd(uint256[] memory defaultEnds, uint256 idx)
         private
         pure
-        returns (uint256 amtPerSec, uint256 start)
+        returns (
+            uint256 amtPerSec,
+            uint256 start,
+            uint256 end
+        )
     {
         uint256 val;
         // solhint-disable-next-line no-inline-assembly
         assembly ("memory-safe") {
             val := mload(add(32, add(defaultEnds, shl(5, idx))))
         }
-        return (val >> 32, uint32(val));
+        return (val >> 64, uint32(val >> 32), uint32(val));
     }
 
     /// @notice Calculates the end time of drips without duration.
@@ -381,23 +386,20 @@ abstract contract Drips {
         require(receivers.length <= _MAX_DRIPS_RECEIVERS, "Too many drips receivers");
         uint256[] memory defaultEnds = new uint256[](receivers.length);
         uint256 defaultEndsLen = 0;
-        uint256 spent = 0;
         for (uint256 i = 0; i < receivers.length; i++) {
             DripsReceiver memory receiver = receivers[i];
             uint192 amtPerSec = receiver.config.amtPerSec();
             require(amtPerSec != 0, "Drips receiver amtPerSec is zero");
             if (i > 0) require(_isOrdered(receivers[i - 1], receiver), "Receivers not sorted");
-            // Default drips end doesn't matter here, the end time is ignored when
-            // the duration is zero and if it's non-zero the default end is not used anyway
-            (uint32 start, uint32 end) = _dripsRangeInFuture(receiver, _currTimestamp(), 0);
-            if (receiver.config.duration() == 0) {
-                _addDefaultEnd(defaultEnds, defaultEndsLen++, amtPerSec, start);
-            } else {
-                spent += _drippedAmt(amtPerSec, start, end);
+            (uint32 start, uint32 end) = _dripsRangeInFuture(
+                receiver,
+                _currTimestamp(),
+                type(uint32).max
+            );
+            if (start < end) {
+                _addDefaultEnd(defaultEnds, defaultEndsLen++, amtPerSec, start, end);
             }
         }
-        require(balance >= spent, "Insufficient balance");
-        balance -= uint128(spent);
         return _calcDefaultEnd(defaultEnds, defaultEndsLen, balance);
     }
 
@@ -433,19 +435,20 @@ abstract contract Drips {
     /// @param defaultEnds The list of default ends
     /// @param defaultEndsLen The length of `defaultEnds`
     /// @param balance The balance when drips have started
-    /// @param end The time until which the drips are checked to be covered
+    /// @param maxEnd The time until which the drips are checked to be covered
     /// @return isEnough `true` if the balance is enough, `false` otherwise
     function _isBalanceEnough(
         uint256[] memory defaultEnds,
         uint256 defaultEndsLen,
         uint256 balance,
-        uint256 end
+        uint256 maxEnd
     ) private view returns (bool isEnough) {
         unchecked {
             uint256 spent = 0;
             for (uint256 i = 0; i < defaultEndsLen; i++) {
-                (uint256 amtPerSec, uint256 start) = _getDefaultEnd(defaultEnds, i);
-                if (end <= start) continue;
+                (uint256 amtPerSec, uint256 start, uint256 end) = _getDefaultEnd(defaultEnds, i);
+                if (maxEnd <= start) continue;
+                if (maxEnd < end) end = maxEnd;
                 spent += _drippedAmt(amtPerSec, start, end);
                 if (spent > balance) return false;
             }
@@ -629,7 +632,7 @@ abstract contract Drips {
         start = receiver.config.start();
         if (start == 0) start = updateTime;
         uint40 end = uint40(start) + receiver.config.duration();
-        if (end == start) end = defaultEnd;
+        if (end == start || end > defaultEnd) end = defaultEnd;
         if (start < startCap) start = startCap;
         if (end > endCap) end = endCap;
         if (end < start) end = start;
