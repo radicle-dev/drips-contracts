@@ -89,7 +89,7 @@ abstract contract DripsHubUserUtils is DSTest {
         list = new DripsReceiver[](1);
         list[0] = DripsReceiver(
             user.userId(),
-            DripsConfigImpl.create(uint192(amtPerSec * dripsHub.amtPerSecMultiplier()), 0, 0)
+            DripsConfigImpl.create(uint192(amtPerSec * dripsHub.AMT_PER_SEC_MULTIPLIER()), 0, 0)
         );
     }
 
@@ -102,11 +102,11 @@ abstract contract DripsHubUserUtils is DSTest {
         list = new DripsReceiver[](2);
         list[0] = DripsReceiver(
             user1.userId(),
-            DripsConfigImpl.create(uint192(amtPerSec1 * dripsHub.amtPerSecMultiplier()), 0, 0)
+            DripsConfigImpl.create(uint192(amtPerSec1 * dripsHub.AMT_PER_SEC_MULTIPLIER()), 0, 0)
         );
         list[1] = DripsReceiver(
             user2.userId(),
-            DripsConfigImpl.create(uint192(amtPerSec2 * dripsHub.amtPerSecMultiplier()), 0, 0)
+            DripsConfigImpl.create(uint192(amtPerSec2 * dripsHub.AMT_PER_SEC_MULTIPLIER()), 0, 0)
         );
     }
 
