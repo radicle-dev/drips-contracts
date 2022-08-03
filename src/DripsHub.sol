@@ -37,8 +37,7 @@ import {IERC20} from "openzeppelin-contracts/token/ERC20/IERC20.sol";
 /// The actual implementation emulates that behavior by calculating the results of the scheduled
 /// events based on how many seconds have passed and only when the user needs their outcomes.
 ///
-/// The contract assumes that all amounts in the system can be stored in signed 128-bit integers.
-/// It's guaranteed to be safe only when working with assets with supply lower than `2 ^ 127`.
+/// The contract can store at most `type(int128).max` which is `2 ^ 127 - 1` units of each token.
 contract DripsHub is Managed, Drips, Splits {
     /// @notice The address of the ERC-20 reserve which the drips hub works with
     IReserve public immutable reserve;
@@ -57,6 +56,8 @@ contract DripsHub is Managed, Drips, Splits {
     /// @notice The offset of the controlling app ID in the user ID.
     /// In other words the controlling app ID is the higest 32 bits of the user ID.
     uint256 public constant APP_ID_OFFSET = 224;
+    /// @notice The total amount the contract can store of each token.
+    uint256 public constant MAX_TOTAL_BALANCE = uint128(type(int128).max);
     /// @notice The ERC-1967 storage slot holding a single `DripsHubStorage` structure.
     bytes32 private immutable _storageSlot = erc1967Slot("eip1967.dripsHub.storage");
 
@@ -80,6 +81,8 @@ contract DripsHub is Managed, Drips, Splits {
         uint32 nextAppId;
         /// @notice App addresses. The key is the app ID, the value is the app address.
         mapping(uint32 => address) appAddrs;
+        /// @notice The total amount currently stored in DripsHub of each token.
+        mapping(IERC20 => uint256) totalBalances;
     }
 
     /// @param cycleSecs_ The length of cycleSecs to be used in the contract instance.
@@ -149,6 +152,13 @@ contract DripsHub is Managed, Drips, Splits {
     /// @return cycleSecs_ The cycle length in seconds.
     function cycleSecs() public view returns (uint32 cycleSecs_) {
         return Drips._cycleSecs;
+    }
+
+    /// @notice Returns the total amount currently stored in DripsHub of the given token.
+    /// @param erc20 The ERC-20 token
+    /// @return balance The balance of the token.
+    function totalBalance(IERC20 erc20) public view returns (uint256 balance) {
+        return _dripsHubStorage().totalBalances[erc20];
     }
 
     /// @notice Returns amount of received funds available for collection for a user.
@@ -285,6 +295,7 @@ contract DripsHub is Managed, Drips, Splits {
         returns (uint128 amt)
     {
         amt = Splits._collect(userId, _assetId(erc20));
+        decreaseTotalBalance(erc20, amt);
         reserve.withdraw(erc20, msg.sender, amt);
     }
 
@@ -301,6 +312,7 @@ contract DripsHub is Managed, Drips, Splits {
         IERC20 erc20,
         uint128 amt
     ) public whenNotPaused onlyApp(userId) {
+        increaseTotalBalance(erc20, amt);
         Splits._give(userId, receiver, _assetId(erc20), amt);
         reserve.deposit(erc20, msg.sender, amt);
     }
@@ -363,6 +375,9 @@ contract DripsHub is Managed, Drips, Splits {
         int128 balanceDelta,
         DripsReceiver[] memory newReceivers
     ) public whenNotPaused onlyApp(userId) returns (uint128 newBalance, int128 realBalanceDelta) {
+        if (balanceDelta > 0) {
+            increaseTotalBalance(erc20, uint128(balanceDelta));
+        }
         (newBalance, realBalanceDelta) = Drips._setDrips(
             userId,
             _assetId(erc20),
@@ -373,6 +388,7 @@ contract DripsHub is Managed, Drips, Splits {
         if (realBalanceDelta > 0) {
             reserve.deposit(erc20, msg.sender, uint128(realBalanceDelta));
         } else if (realBalanceDelta < 0) {
+            decreaseTotalBalance(erc20, uint128(-realBalanceDelta));
             reserve.withdraw(erc20, msg.sender, uint128(-realBalanceDelta));
         }
     }
@@ -432,6 +448,16 @@ contract DripsHub is Managed, Drips, Splits {
         assembly {
             storageRef.slot := slot
         }
+    }
+
+    function increaseTotalBalance(IERC20 erc20, uint128 amt) internal {
+        mapping(IERC20 => uint256) storage totalBalances = _dripsHubStorage().totalBalances;
+        require(totalBalances[erc20] + amt <= MAX_TOTAL_BALANCE, "Total balance too high");
+        totalBalances[erc20] += amt;
+    }
+
+    function decreaseTotalBalance(IERC20 erc20, uint128 amt) internal {
+        _dripsHubStorage().totalBalances[erc20] -= amt;
     }
 
     /// @notice Generates an asset ID for the ERC-20 token

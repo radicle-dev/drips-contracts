@@ -29,18 +29,16 @@ contract DripsHubTest is DripsHubUserUtils {
     string internal constant ERROR_NOT_APP = "Callable only by the app";
     string private constant ERROR_NOT_ADMIN = "Caller is not the admin";
     string private constant ERROR_PAUSED = "Contract paused";
+    string private constant ERROR_BALANCE_TOO_HIGH = "Total balance too high";
 
     function setUp() public {
-        defaultErc20 = new ERC20PresetFixedSupply("test", "test", 10**6 * 1 ether, address(this));
-        otherErc20 = new ERC20PresetFixedSupply("other", "other", 10**6 * 1 ether, address(this));
+        defaultErc20 = new ERC20PresetFixedSupply("test", "test", type(uint136).max, address(this));
+        otherErc20 = new ERC20PresetFixedSupply("other", "other", type(uint136).max, address(this));
         Reserve reserve = new Reserve(address(this));
         DripsHub hubLogic = new DripsHub(10, reserve);
         dripsHub = DripsHub(address(new Proxy(hubLogic, address(this))));
         reserve.addUser(address(dripsHub));
         addressApp = new AddressApp(dripsHub);
-        user = createUser();
-        receiver1 = createUser();
-        receiver2 = createUser();
         admin = new ManagedUser(dripsHub);
         nonAdmin = new ManagedUser(dripsHub);
         dripsHub.changeAdmin(address(admin));
@@ -59,8 +57,8 @@ contract DripsHubTest is DripsHubUserUtils {
 
     function createUser() internal returns (AddressAppUser newUser) {
         newUser = new AddressAppUser(addressApp);
-        defaultErc20.transfer(address(newUser), 100 ether);
-        otherErc20.transfer(address(newUser), 100 ether);
+        defaultErc20.transfer(address(newUser), defaultErc20.totalSupply() / 100);
+        otherErc20.transfer(address(newUser), otherErc20.totalSupply() / 100);
     }
 
     function testDoesNotRequireReceiverToBeInitialized() public {
@@ -366,6 +364,32 @@ contract DripsHubTest is DripsHubUserUtils {
         assertEq(split, 0, "Invalid split amount");
         assertCollectableAll(receiver1, 0);
         assertBalance(receiver1, balanceBefore + 5);
+    }
+
+    function testSetDripsLimitsTotalBalance() public {
+        uint128 maxBalance = uint128(dripsHub.MAX_TOTAL_BALANCE());
+        assertTotalBalance(0);
+        setDrips(user1, 0, maxBalance, dripsReceivers());
+        assertTotalBalance(maxBalance);
+        assertSetDripsReverts(user2, dripsReceivers(), 1, dripsReceivers(), ERROR_BALANCE_TOO_HIGH);
+        setDrips(user1, maxBalance, maxBalance - 1, dripsReceivers());
+        assertTotalBalance(maxBalance - 1);
+        setDrips(user2, 0, 1, dripsReceivers());
+        assertTotalBalance(maxBalance);
+    }
+
+    function testGiveLimitsTotalBalance() public {
+        uint128 maxBalance = uint128(dripsHub.MAX_TOTAL_BALANCE());
+        assertTotalBalance(0);
+        give(user1, receiver1, maxBalance - 1);
+        assertTotalBalance(maxBalance - 1);
+        give(user1, receiver2, 1);
+        assertTotalBalance(maxBalance);
+        assertGiveReverts(user2, receiver3, 1, ERROR_BALANCE_TOO_HIGH);
+        collectAll(receiver2, 1);
+        assertTotalBalance(maxBalance - 1);
+        give(user2, receiver3, 1);
+        assertTotalBalance(maxBalance);
     }
 
     function testAdminCanBeChanged() public {

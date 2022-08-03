@@ -65,6 +65,10 @@ library DripsConfigImpl {
     }
 }
 
+/// @notice Drips can keep track of at most `type(int128).max`
+/// which is `2 ^ 127 - 1` units of each asset.
+/// It's up to the caller to guarantee that this limit is never exceeded,
+/// failing to do so may result in a total protocol collapse.
 abstract contract Drips {
     /// @notice Maximum number of drips receivers of a single user.
     /// Limits cost of changes in drips configuration.
